@@ -9,7 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
-  
+
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -61,7 +61,8 @@ class _HomePageState extends State<HomePage> {
 
     FlutterBluePlus.scanResults.listen((results) {
       setState(() {
-        scanResults = results.where((result) => result.device.name.isNotEmpty).toList();
+        scanResults =
+            results.where((result) => result.device.name.isNotEmpty).toList();
       });
     });
   }
@@ -98,8 +99,7 @@ class _HomePageState extends State<HomePage> {
             if (characteristic.uuid.toString() == CHARACTERISTIC_UUID &&
                 characteristic.properties.notify) {
               await characteristic.setNotifyValue(true);
-              characteristicSubscription =
-                  characteristic.value.listen((value) {
+              characteristicSubscription = characteristic.value.listen((value) {
                 _handleEEGData(value);
               });
             }
@@ -112,10 +112,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _handleEEGData(List<int> data) {
-    final dataString = data
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join(' ');
-    
+    final dataString =
+        data.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(' ');
+
     setState(() {
       eegData.add(dataString);
       if (eegData.length > 100) {
@@ -145,7 +144,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> listenFocusLevelFromBackend() async {
     try {
-      final response = await http.get(Uri.parse('https://clean-eeg.onrender.com/focus'));
+      final response =
+          await http.get(Uri.parse('https://clean-eeg.onrender.com/focus'));
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
         if (data.containsKey('focus_level')) {
@@ -206,7 +206,8 @@ class _HomePageState extends State<HomePage> {
         if (response.statusCode == 200) {
           _showSnackBar('Recorded data sent successfully');
         } else {
-          throw Exception('Failed to send recorded data: ${response.statusCode}');
+          throw Exception(
+              'Failed to send recorded data: ${response.statusCode}');
         }
       } catch (e) {
         _showSnackBar('Failed to send recorded data: ${e.toString()}');
@@ -222,7 +223,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Color _getFocusColor(double level) {
@@ -246,13 +248,14 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Center(
                 child: Text(
-                  'ID: ${currentUser.id}',
+                  'User: ${currentUser.email}',
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
             ),
           IconButton(
-            icon: Icon(isConnected ? Icons.bluetooth_connected : Icons.bluetooth),
+            icon:
+                Icon(isConnected ? Icons.bluetooth_connected : Icons.bluetooth),
             onPressed: null,
           ),
         ],
@@ -268,7 +271,8 @@ class _HomePageState extends State<HomePage> {
                 ElevatedButton.icon(
                   icon: Icon(isScanning ? Icons.stop : Icons.search),
                   label: Text(isScanning ? 'Stop Scan' : 'Start Scan'),
-                  onPressed: isScanning ? () => FlutterBluePlus.stopScan() : startScan,
+                  onPressed:
+                      isScanning ? () => FlutterBluePlus.stopScan() : startScan,
                 ),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.cloud_upload),
@@ -276,9 +280,13 @@ class _HomePageState extends State<HomePage> {
                   onPressed: isConnected ? sendDataToServer : null,
                 ),
                 ElevatedButton.icon(
-                  icon: Icon(isRecording ? Icons.stop : Icons.fiber_manual_record),
-                  label: Text(isRecording ? 'Stop Recording' : 'Start Recording'),
-                  onPressed: isConnected ? (isRecording ? null : startRecording) : null,
+                  icon: Icon(
+                      isRecording ? Icons.stop : Icons.fiber_manual_record),
+                  label:
+                      Text(isRecording ? 'Stop Recording' : 'Start Recording'),
+                  onPressed: isConnected
+                      ? (isRecording ? null : startRecording)
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isRecording ? Colors.red : null,
                   ),
@@ -286,7 +294,8 @@ class _HomePageState extends State<HomePage> {
                 ElevatedButton.icon(
                   icon: const Icon(Icons.save),
                   label: const Text('Save & Send'),
-                  onPressed: isConnected && isRecording ? stopRecordingAndSend : null,
+                  onPressed:
+                      isConnected && isRecording ? stopRecordingAndSend : null,
                 ),
               ],
             ),
@@ -301,7 +310,9 @@ class _HomePageState extends State<HomePage> {
                   final result = scanResults[index];
                   return ListTile(
                     title: Text(
-                      result.device.name.isEmpty ? 'Unknown Device' : result.device.name,
+                      result.device.name.isEmpty
+                          ? 'Unknown Device'
+                          : result.device.name,
                     ),
                     subtitle: Text(result.device.id.toString()),
                     trailing: ElevatedButton(
@@ -331,7 +342,8 @@ class _HomePageState extends State<HomePage> {
                               CircularProgressIndicator(
                                 value: focusLevel / 100,
                                 strokeWidth: 12,
-                                valueColor: AlwaysStoppedAnimation<Color>(_getFocusColor(focusLevel)),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    _getFocusColor(focusLevel)),
                                 backgroundColor: Colors.grey[800],
                               ),
                               Text(
