@@ -9,15 +9,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
-    url: const String.fromEnvironment('supabase_url', defaultValue: 'https://hgayqneyregefvokcuiy.supabase.co'),
-    anonKey: const String.fromEnvironment('supabase_anon_key', defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnYXlxbmV5cmVnZWZ2b2tjdWl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg1NDM3NTcsImV4cCI6MjA1NDExOTc1N30._3gQfG2lEkO0H0z55zCjK9_sjhU8eu-jdHe8Ux7rkQY'),
+    url: const String.fromEnvironment('supabase_url',
+        defaultValue: 'https://hgayqneyregefvokcuiy.supabase.co'),
+    anonKey: const String.fromEnvironment('supabase_anon_key',
+        defaultValue:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnYXlxbmV5cmVnZWZ2b2tjdWl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg1NDM3NTcsImV4cCI6MjA1NDExOTc1N30._3gQfG2lEkO0H0z55zCjK9_sjhU8eu-jdHe8Ux7rkQY'),
   );
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-  
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

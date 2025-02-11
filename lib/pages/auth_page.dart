@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:developer';
+import 'dart:io'; // For SocketException
 
 class AuthPage extends StatefulWidget {
   const AuthPage({Key? key}) : super(key: key);
@@ -72,10 +73,19 @@ class _AuthPageState extends State<AuthPage> {
 
       // Navigate to the HomePage after a successful authentication.
       Navigator.pushReplacementNamed(context, '/home');
-    } catch (error) {
-      log('Authentication error: $error');
+    } on SocketException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Authentication error: $error")),
+        const SnackBar(
+            content: Text(
+                'Connection failed. Please check your internet connection.')),
+      );
+    } on AuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Authentication error: ${e.message}")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString()}")),
       );
     } finally {
       setState(() {
