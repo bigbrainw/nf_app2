@@ -4,7 +4,7 @@ import 'dart:io' show Platform;
 import 'package:permission_handler/permission_handler.dart';
 
 class PermissionsPage extends StatefulWidget {
-  const PermissionsPage({Key? key}) : super(key: key);
+  const PermissionsPage({super.key});
 
   @override
   _PermissionsPageState createState() => _PermissionsPageState();
