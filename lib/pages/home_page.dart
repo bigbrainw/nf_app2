@@ -27,9 +27,9 @@ class _HomePageState extends State<HomePage> {
   bool isRecording = false;
   List<String> recordedData = [];
 
-  // BLE Configuration
-  final String SERVICE_UUID = "22bbaa2a-c8c3-4d4b-8d7e-96b704283c6c";
-  final String CHARACTERISTIC_UUID = "dbecd60f-595a-4ff1-b9cd-fe0491cc1d0d";
+  // // BLE Configuration
+  // final String SERVICE_UUID = "22bbaa2a-c8c3-4d4b-8d7e-96b704283c6c";
+  // final String CHARACTERISTIC_UUID = "dbecd60f-595a-4ff1-b9cd-fe0491cc1d0d";
 
   // Focus level indicator (0 to 100)
   double focusLevel = 0;
@@ -94,15 +94,12 @@ class _HomePageState extends State<HomePage> {
 
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
-        if (service.uuid.toString() == SERVICE_UUID) {
-          for (var characteristic in service.characteristics) {
-            if (characteristic.uuid.toString() == CHARACTERISTIC_UUID &&
-                characteristic.properties.notify) {
-              await characteristic.setNotifyValue(true);
-              characteristicSubscription = characteristic.value.listen((value) {
-                _handleEEGData(value);
-              });
-            }
+        for (var characteristic in service.characteristics) {
+          if (characteristic.properties.notify) {
+            await characteristic.setNotifyValue(true);
+            characteristicSubscription = characteristic.value.listen((value) {
+              _handleEEGData(value);
+            });
           }
         }
       }
@@ -112,16 +109,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _handleEEGData(List<int> data) {
-    final dataString =
-        data.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(' ');
+    // Change: decode data using UTF-8 and trim whitespace.
+    final decodedString = utf8.decode(data).trim();
 
     setState(() {
-      eegData.add(dataString);
+      eegData.add(decodedString);
       if (eegData.length > 100) {
         eegData.removeAt(0);
       }
       if (isRecording) {
-        recordedData.add(dataString);
+        recordedData.add(decodedString);
       }
     });
 
