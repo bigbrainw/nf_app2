@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'pages/permissions_page.dart';
 import 'pages/auth_page.dart';
 import 'pages/home_page.dart';
+import 'pages/sign_up_page.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -34,6 +35,7 @@ class MyApp extends StatelessWidget {
         '/permissions': (context) => const PermissionsPage(),
         '/auth': (context) => const AuthPage(),
         '/home': (context) => const HomePage(),
+        '/signup': (context) => const SignupPage(),
       },
     );
   }

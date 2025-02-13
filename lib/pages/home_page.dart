@@ -1,15 +1,19 @@
 // lib/pages/home_page.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:developer';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../styles.dart';
+import '../widgets/graph_widget.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
-
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -19,27 +23,27 @@ class _HomePageState extends State<HomePage> {
   List<ScanResult> scanResults = [];
   bool isScanning = false;
   BluetoothDevice? connectedDevice;
-  List<String> eegData = [];
   bool isConnected = false;
   StreamSubscription? connectionStateSubscription;
   StreamSubscription? characteristicSubscription;
-  final ScrollController _scrollController = ScrollController();
-  bool isRecording = false;
-  List<String> recordedData = [];
-
-  // // BLE Configuration
-  // final String SERVICE_UUID = "22bbaa2a-c8c3-4d4b-8d7e-96b704283c6c";
-  // final String CHARACTERISTIC_UUID = "dbecd60f-595a-4ff1-b9cd-fe0491cc1d0d";
-
-  // Focus level indicator (0 to 100)
-  double focusLevel = 0;
-
   Timer? _focusTimer;
+  double focusLevel = 0;
+  // Socket connection variables.
+  IO.Socket? _socket;
+  bool _socketConnected = false;
+
+  // BLE data for graph.
+  List<double> bleGraphData = [];
 
   @override
   void initState() {
     super.initState();
     // Permissions are handled in PermissionsPage, authentication is handled in AuthPage.
+    // Start periodic focus level updates.
+    _focusTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+
+      listenFocusLevelFromBackend();
+    });
   }
 
   void startScan() {
@@ -47,7 +51,6 @@ class _HomePageState extends State<HomePage> {
       scanResults.clear();
       isScanning = true;
     });
-
     FlutterBluePlus.startScan(timeout: const Duration(seconds: 4)).then((_) {
       setState(() {
         isScanning = false;
@@ -58,7 +61,6 @@ class _HomePageState extends State<HomePage> {
       });
       _showSnackBar('Failed to start scan: $error');
     });
-
     FlutterBluePlus.scanResults.listen((results) {
       setState(() {
         scanResults =
@@ -75,12 +77,6 @@ class _HomePageState extends State<HomePage> {
         isConnected = true;
         focusLevel = 0;
       });
-
-      // Start polling the backend for focus level updates every 2 seconds.
-      _focusTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-        listenFocusLevelFromBackend();
-      });
-
       connectionStateSubscription = device.state.listen((state) {
         if (state == BluetoothDeviceState.disconnected) {
           setState(() {
@@ -88,10 +84,8 @@ class _HomePageState extends State<HomePage> {
             connectedDevice = null;
           });
           _showSnackBar('Device disconnected');
-          _focusTimer?.cancel();
         }
       });
-
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
         for (var characteristic in service.characteristics) {
@@ -109,49 +103,76 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _handleEEGData(List<int> data) {
-    // Change: decode data using UTF-8 and trim whitespace.
-    final decodedString = utf8.decode(data).trim();
+    try {
+      final decodedString = utf8.decode(data).trim();
+      List<double> values =
+          decodedString.split(',').map((e) => double.tryParse(e) ?? 0).toList();
 
-    setState(() {
-      eegData.add(decodedString);
-      if (eegData.length > 100) {
-        eegData.removeAt(0);
-      }
-      if (isRecording) {
-        recordedData.add(decodedString);
-      }
-    });
-
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-  }
-
-  Future<void> disconnectDevice() async {
-    if (connectedDevice != null) {
-      await connectedDevice!.disconnect();
       setState(() {
-        connectedDevice = null;
-        isConnected = false;
-        eegData.clear();
+        if (values.isNotEmpty) {
+          bleGraphData.add(values.reduce((a, b) => a + b) / values.length);
+          if (bleGraphData.length > 100) {
+            bleGraphData.removeAt(0);
+          }
+        }
       });
-      connectionStateSubscription?.cancel();
-      characteristicSubscription?.cancel();
-      _focusTimer?.cancel();
+
+      // Send data to socket if connected
+      if (_socketConnected && _socket != null) {
+        log('Sending BLE data to socket: $decodedString');
+        try {
+          _socket!.emit('eeg_data', {
+            'data': decodedString,
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+        } catch (e) {
+          log('Socket emit error: $e');
+          _reconnectSocket();
+        }
+      }
+    } catch (e) {
+      log('Error handling EEG data: $e');
     }
   }
 
+  // json response example:
+  //     {
+  // "eeg_data": [
+  // {
+  // "beta_power": 12.7291946411133,
+  // "created_at": "2025-02-13T00:54:44.210034+00:00",
+  // "eeg_data": [[123,123,1234,1234,123456,-1245]],
+  // "id": 16,
+  //       "user_id": "6300f723-b5d2-4672-9e29-bcc62ac9f547"
+  //     }
+  //   ]
+  // }
+
+
   Future<void> listenFocusLevelFromBackend() async {
     try {
-      final response =
-          await http.get(Uri.parse('https://clean-eeg.onrender.com/focus'));
+      final response = await http.get(
+        Uri.parse('https://clean-eeg.onrender.com/eeg-data/${Supabase.instance.client.auth.currentUser?.id}'),
+      );
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        if (data.containsKey('focus_level')) {
-          double newFocusLevel = (data['focus_level'] is num)
-              ? data['focus_level'].toDouble()
-              : 0.0;
-          setState(() {
-            focusLevel = newFocusLevel;
-          });
+
+        if (data.containsKey('eeg_data')) {
+          // Assuming you want the first item in the eeg_data array
+          final List<dynamic> eegDataList = data['eeg_data'];
+          if (eegDataList.isNotEmpty) {
+            final Map<String, dynamic> firstEegData = eegDataList[0];
+
+            // Extract beta_power (or any other field) as the focus level
+            double newLevel = (firstEegData['beta_power'] is num)
+                ? firstEegData['beta_power'].toDouble()
+                : 0.0;
+
+            setState(() {
+              focusLevel = newLevel;
+            });
+          }
         }
       } else {
         log('Error getting focus level: ${response.statusCode}');
@@ -160,63 +181,50 @@ class _HomePageState extends State<HomePage> {
       log('Exception in listenFocusLevelFromBackend: $e');
     }
   }
-
-  Future<void> sendDataToServer() async {
+  Future<void> _startSocket() async {
     try {
-      final response = await http.post(
-        Uri.parse('https://clean-eeg.onrender.com/eeg-data'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'data': eegData}),
-      );
+      log('Attempting to connect socket...');
+      IO.Socket socket =
+          IO.io('https://clean-eeg.onrender.com'); // Corrected socket URL
+      socket.onConnect((_) {
+        print('connect');
+        socket.emit('msg', 'test');
+      });
+      socket.on('event', (data) => print(data));
+      socket.onDisconnect((_) => print('disconnect'));
+      socket.on('fromServer', (_) => print(_));
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> resBody = json.decode(response.body);
-        if (resBody.containsKey('focus_level')) {
-          double newFocusLevel = (resBody['focus_level'] is num)
-              ? resBody['focus_level'].toDouble()
-              : 0.0;
-          setState(() {
-            focusLevel = newFocusLevel;
-          });
-        }
-        _showSnackBar('Data sent successfully');
-      } else {
-        throw Exception('Failed to send data: ${response.statusCode}');
+      _socket = socket;
+      await _socket!.connect();
+    } catch (e) {
+      log('Error initializing socket: $e');
+      _showSnackBar('Failed to initialize socket: $e');
+    }
+  }
+
+  Future<void> _stopSocket() async {
+    try {
+      if (_socket != null) {
+        log('Disconnecting socket...');
+        _socket!.disconnect();
+        _socket!.dispose();
+        setState(() {
+          _socketConnected = false;
+          _socket = null;
+        });
+        _showSnackBar('Socket disconnected');
       }
     } catch (e) {
-      _showSnackBar('Failed to send data: ${e.toString()}');
+      log('Error stopping socket: $e');
+      _showSnackBar('Error disconnecting socket: $e');
     }
   }
 
-  Future<void> stopRecordingAndSend() async {
-    setState(() {
-      isRecording = false;
-    });
-    if (recordedData.isNotEmpty) {
-      try {
-        final response = await http.post(
-          Uri.parse('https://clean-eeg.onrender.com/'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({'data': recordedData}),
-        );
-
-        if (response.statusCode == 200) {
-          _showSnackBar('Recorded data sent successfully');
-        } else {
-          throw Exception(
-              'Failed to send recorded data: ${response.statusCode}');
-        }
-      } catch (e) {
-        _showSnackBar('Failed to send recorded data: ${e.toString()}');
-      }
-    }
-  }
-
-  void startRecording() {
-    setState(() {
-      isRecording = true;
-      recordedData.clear();
-    });
+  void _reconnectSocket() async {
+    log('Attempting to reconnect socket...');
+    await _stopSocket();
+    await Future.delayed(const Duration(seconds: 1));
+    await _startSocket();
   }
 
   void _showSnackBar(String message) {
@@ -226,20 +234,19 @@ class _HomePageState extends State<HomePage> {
 
   Color _getFocusColor(double level) {
     if (level < 40) return Colors.red;
-    if (level < 70) return Colors.amber;
-    return Colors.green;
+    if (level < 70) return AppStyles.accentColor;
+    return AppStyles.accentColor;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Retrieve the current user from Supabase.
     final currentUser = Supabase.instance.client.auth.currentUser;
-
     return Scaffold(
+      backgroundColor: AppStyles.backgroundColor,
       appBar: AppBar(
+        // ...existing code...
         title: const Text('EEG BLE Monitor'),
         actions: [
-          // Display the user's ID in the top right corner, if available.
           if (currentUser != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -259,7 +266,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
-          // Row of control buttons.
+          // Control Buttons Row: Keep Scan and add Socket Start/Stop button.
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -270,34 +277,25 @@ class _HomePageState extends State<HomePage> {
                   label: Text(isScanning ? 'Stop Scan' : 'Start Scan'),
                   onPressed:
                       isScanning ? () => FlutterBluePlus.stopScan() : startScan,
-                ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.cloud_upload),
-                  label: const Text('Send Data'),
-                  onPressed: isConnected ? sendDataToServer : null,
-                ),
-                ElevatedButton.icon(
-                  icon: Icon(
-                      isRecording ? Icons.stop : Icons.fiber_manual_record),
-                  label:
-                      Text(isRecording ? 'Stop Recording' : 'Start Recording'),
-                  onPressed: isConnected
-                      ? (isRecording ? null : startRecording)
-                      : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isRecording ? Colors.red : null,
+                    backgroundColor: AppStyles.buttonColor,
+                    foregroundColor: AppStyles.accentColor,
                   ),
                 ),
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.save),
-                  label: const Text('Save & Send'),
-                  onPressed:
-                      isConnected && isRecording ? stopRecordingAndSend : null,
+                  icon: Icon(_socketConnected ? Icons.stop : Icons.play_arrow),
+                  label:
+                      Text(_socketConnected ? 'Stop Socket' : 'Start Socket'),
+                  onPressed: _socketConnected ? _stopSocket : _startSocket,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppStyles.buttonColor,
+                    foregroundColor: AppStyles.accentColor,
+                  ),
                 ),
               ],
             ),
           ),
-          // If not connected, show the scan results list.
+          // If not connected, show scan results.
           if (isScanning || (!isConnected && scanResults.isNotEmpty))
             Expanded(
               flex: 1,
@@ -306,21 +304,23 @@ class _HomePageState extends State<HomePage> {
                 itemBuilder: (context, index) {
                   final result = scanResults[index];
                   return ListTile(
-                    title: Text(
-                      result.device.name.isEmpty
-                          ? 'Unknown Device'
-                          : result.device.name,
-                    ),
+                    title: Text(result.device.name.isEmpty
+                        ? 'Unknown Device'
+                        : result.device.name),
                     subtitle: Text(result.device.id.toString()),
                     trailing: ElevatedButton(
                       child: const Text('Connect'),
                       onPressed: () => connectToDevice(result.device),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppStyles.buttonColor,
+                        foregroundColor: AppStyles.accentColor,
+                      ),
                     ),
                   );
                 },
               ),
             ),
-          // If connected, show a swipeable PageView with the focus indicator and raw data.
+          // If connected, show a swipeable PageView with focus indicator and graph.
           if (isConnected)
             Expanded(
               flex: 2,
@@ -341,7 +341,7 @@ class _HomePageState extends State<HomePage> {
                                 strokeWidth: 12,
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                     _getFocusColor(focusLevel)),
-                                backgroundColor: Colors.grey[800],
+                                backgroundColor: Colors.black,
                               ),
                               Text(
                                 '${focusLevel.toStringAsFixed(0)}%',
@@ -362,27 +362,10 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                   ),
+                  // Graph view for BLE data.
                   Container(
                     margin: const EdgeInsets.all(8.0),
-                    padding: const EdgeInsets.all(8.0),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      itemCount: eegData.length,
-                      itemBuilder: (context, index) {
-                        return Text(
-                          eegData[index],
-                          style: const TextStyle(
-                            color: Colors.green,
-                            fontFamily: 'Courier',
-                          ),
-                        );
-                      },
-                    ),
+                    child: GraphWidget(data: bleGraphData),
                   ),
                 ],
               ),
@@ -391,7 +374,18 @@ class _HomePageState extends State<HomePage> {
       ),
       floatingActionButton: isConnected
           ? FloatingActionButton(
-              onPressed: disconnectDevice,
+              onPressed: () async {
+                if (connectedDevice != null) {
+                  await connectedDevice!.disconnect();
+                  setState(() {
+                    isConnected = false;
+                    connectedDevice = null;
+                  });
+                  connectionStateSubscription?.cancel();
+                  characteristicSubscription?.cancel();
+                }
+              },
+              backgroundColor: AppStyles.accentColor,
               child: const Icon(Icons.bluetooth_disabled),
             )
           : null,
@@ -403,7 +397,7 @@ class _HomePageState extends State<HomePage> {
     connectionStateSubscription?.cancel();
     characteristicSubscription?.cancel();
     _focusTimer?.cancel();
-    _scrollController.dispose();
+    _stopSocket();
     super.dispose();
   }
 }
