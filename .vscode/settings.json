@@ -1,0 +1,41 @@
+{
+	"workbench.colorTheme": "Shades of Purple (Super Dark)",
+	"workbench.activityBar.location": "default",
+	"workbench.iconTheme": "eq-material-theme-icons-darker",
+	"editor.fontFamily": "Jetbrains Mono, Menlo, Monaco, 'Courier New', monospace",
+	"terminal.integrated.fontFamily": "'Jetbrains Mono', 'Inconsolata for Powerline', MesloLGS NF",
+	"editor.fontSize": 15,
+	"editor.lineHeight": 25,
+	"editor.letterSpacing": 0.5,
+	"editor.fontWeight": "400",
+	"editor.fontLigatures": true,
+	"editor.cursorStyle": "line",
+	"editor.cursorWidth": 5,
+	"editor.cursorBlinking": "solid",
+	"editor.renderWhitespace": "all",
+	"editor.snippetSuggestions": "top",
+	"workbench.startupEditor": "newUntitledFile",
+	"editor.glyphMargin": true,
+	"workbench.editor.enablePreview": false,
+	"explorer.confirmDragAndDrop": false,
+	"files.trimTrailingWhitespace": true,
+	"files.trimFinalNewlines": true,
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+	"source.fixAll.eslint": "explicit"
+	},
+	"workbench.fontAliasing": "auto",
+	"terminal.integrated.macOptionIsMeta": true,
+	"workbench.statusBar.feedback.visible": false,
+	"editor.semanticHighlighting.enabled": false,
+	"highlight-matching-tag.styles": {
+	  "opening": {
+		"full": {
+		  "highlight": "rgba(165, 153, 233, 0.3)"
+		}
+	  }
+	},
+	"importCost.largePackageColor": "#EC3A37F5",
+	"importCost.mediumPackageColor": "#B362FF",
+	"importCost.smallPackageColor": "#EC3A37F5"
+  }
