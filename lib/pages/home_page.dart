@@ -125,21 +125,31 @@ class _HomePageState extends State<HomePage> {
       );
 
       _socket!.onConnect((_) {
-        log('Socket connected' + DateTime.now().toString());
+        log('Socket connected ' + DateTime.now().toString());
         setState(() => _socketConnected = true);
       });
 
+      // Add a listener for the 'eeg_response' event from the backend
+      _socket!.on('eeg_response', (data) {
+        log('Received EEG response: $data');
+        // Assuming beta_power is the focus level you want to display.
+        final double newFocusLevel =
+            (data['beta_power'] as num?)?.toDouble() ?? 0;
+        setState(() {
+          focusLevel = newFocusLevel;
+        });
+      });
+
       _socket!.onDisconnect((_) {
-        log('Socket disconnected' + DateTime.now().toString());
+        log('Socket disconnected ' + DateTime.now().toString());
         setState(() => _socketConnected = false);
-        // _reconnectSocket();
       });
 
       _socket!.onError(
-          (err) => log('Socket error: $err' + DateTime.now().toString()));
+          (err) => log('Socket error: $err ' + DateTime.now().toString()));
       _socket!.connect();
     } catch (e) {
-      _showSnackBar('Socket error: $e' + DateTime.now().toString());
+      _showSnackBar('Socket error: $e ' + DateTime.now().toString());
     }
   }
 
