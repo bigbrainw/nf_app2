@@ -27,10 +27,19 @@ class _HomePageState extends State<HomePage> {
   bool _socketConnected = false;
   List<double> bleGraphData = [];
 
+  // Local buffer for unsent EEG data (each entry is a list of doubles from one BLE notification)
+  List<List<double>> _unsentDataQueue = [];
+  Timer? _transmissionTimer;
+
   @override
   void initState() {
     super.initState();
-    _startSocket(); // Start socket when the page initializes
+    _startSocket(); // Establish the socket connection when the page initializes
+
+    // Start a timer to periodically send buffered data every 200 milliseconds
+    _transmissionTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      _sendBufferedData();
+    });
   }
 
   void startScan() {
@@ -84,12 +93,15 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // This function is called whenever a BLE notification is received.
+  // It decodes, parses, and buffers the incoming EEG data.
   void _handleEEGData(List<int> data) {
     try {
       final decodedString = utf8.decode(data).trim();
       List<double> values =
           decodedString.split(',').map((e) => double.tryParse(e) ?? 0).toList();
 
+      // Update UI for the graph (optional visual feedback)
       setState(() {
         if (values.isNotEmpty) {
           bleGraphData.add(values.reduce((a, b) => a + b) / values.length);
@@ -97,20 +109,31 @@ class _HomePageState extends State<HomePage> {
         }
       });
 
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      log('User ID: $userId');
-
-      if (_socketConnected && _socket != null && userId != null) {
-        log('Sending EEG data to backend...');
-        // Updated payload structure to match server requirements
-        _socket!.emit('eeg_data', {
-          'user_id': userId,
-          'data': values, // Changed key from 'eeg_data' to 'data'
-        });
-        log('Sent EEG data: $values', time: DateTime.now());
-      }
+      // Buffer the data instead of sending it immediately
+      _unsentDataQueue.add(values);
     } catch (e) {
       log('Error handling EEG data: $e');
+    }
+  }
+
+  // This function sends the buffered data via the socket connection.
+  // It clears the local buffer after sending.
+  void _sendBufferedData() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (_socketConnected &&
+        _socket != null &&
+        userId != null &&
+        _unsentDataQueue.isNotEmpty) {
+      // Copy the buffered data and then clear the queue
+      final batchToSend = List.from(_unsentDataQueue);
+      _unsentDataQueue.clear();
+
+      log('Sending batch of ${batchToSend.length} data sets to backend...');
+      _socket!.emit('eeg_data', {
+        'user_id': userId,
+        'data': batchToSend,
+      });
+      log('Sent EEG batch data', time: DateTime.now());
     }
   }
 
@@ -129,10 +152,10 @@ class _HomePageState extends State<HomePage> {
         setState(() => _socketConnected = true);
       });
 
-      // Add a listener for the 'eeg_response' event from the backend
+      // Listen for responses from the backend
       _socket!.on('eeg_response', (data) {
         log('Received EEG response: $data');
-        // Assuming beta_power is the focus level you want to display.
+        // Assume the response contains a beta_power value that determines focusLevel
         final double newFocusLevel =
             (data['beta_power'] as num?)?.toDouble() ?? 0;
         setState(() {
@@ -163,10 +186,6 @@ class _HomePageState extends State<HomePage> {
       });
     }
   }
-
-  // void _reconnectSocket() {
-  //   Future.delayed(const Duration(seconds: 2), () => _startSocket());
-  // }
 
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -207,6 +226,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
+          // Buttons for scanning and socket connection
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -234,6 +254,7 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
+          // Display scan results if not connected
           if (isScanning || (!isConnected && scanResults.isNotEmpty))
             Expanded(
               flex: 1,
@@ -258,6 +279,7 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
             ),
+          // Main content when connected: focus indicator and live graph
           if (isConnected)
             Expanded(
               flex: 2,
@@ -332,6 +354,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     connectionStateSubscription?.cancel();
     characteristicSubscription?.cancel();
+    _transmissionTimer?.cancel();
     _stopSocket();
     super.dispose();
   }
